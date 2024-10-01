@@ -1,0 +1,62 @@
+---
+title: "Mini Project Article"
+author: "Caleb Woo"
+date: "2024-10-01"
+output: pdf_document
+---
+
+## Outline
+
+
+### Summary: Cohen, Ravikumar, and Fienberg
+
+- Cohen, Ravikumar, and Fienberg implemented an open-source, Java toolkit with a variety of name-matching methods
+- In this paper, they used their toolkit to compare different string distance metrics on the task of matching entity names across numerous different datasets
+- Academic communities such as statistics, databases, and artificial intelligence have proposed different methods for the common problem of matching entity names throughout the years
+- The experiments of Cohen, Ravikumar, and Fienberg provided direct and intuitive comparisons of some of the most popular string distance metrics
+
+- String distance metrics refer to both distance functions and similarity functions
+- For a given pair of strings that are very similar, they would be assigned a small distance value and a large similarity value
+
+- One important category of metrics are edit distances where the distance is the "cost" of the best order of edits to one string to make it identical to the other string
+- Edits can include character insertion, deletion, and substitution so each type of edit is assigned a particular cost
+- The Levenstein distance and the Monger-Elkan distance are a couple of examples of edit distance metrics
+- ELABORATE: Levenstein unit cost vs Monger-Elkan particular cost parameters
+- Although not an edit distance, the Jaro metric takes a broadly similar approach by calculating a score based on the number and order of the common characters for a pair of strings
+- BRIEF: Jaro metric elaboration?
+- BRIEF: Jaro-Winkler extension
+
+- Another major category of metrics are token-based where each string is treated as a multiset of characters or words called tokens
+- One example is the Jaccard similarity which is calculated as the size of the intersection of a pair of strings divided by the size of the union
+- Another example is cosine similarity
+- BRIEF: cosine similarity elaboration
+
+- Hybrid distance metrics combine multiple metrics and approaches to calculate new distances and similarities
+- BRIEF: level two similarity metrics
+- BRIEF: "soft" cosine similarity
+- They developed another hybrid metric by training a binary SVM classifier with input features being the scores from the Monge-Elkan, Jaro-Winkler, cosine similarity, SFS, and soft cosine similarity metrics
+
+### Experiment
+
+We will explore 4 metrics mentioned above in the summary of the paper and available in the `stringdist` R package
+
+1. Levenstein distance
+2. Jaro-Winkler distance
+3. Jaccard similarity
+4. Cosine similarity
+
+TODO: more rigorous explanations of these 4 metrics depending on the level of detail in the final summary?
+
+Datasets (hard to find, hopefully can find more!):
+- https://www.kaggle.com/datasets/satishgunjal/fuzzy-name-matching?select=test.csv
+
+Tentative Plan:
+- Make an experimental hybrid metric by training some binary classifier (logistic regression, boosting?) using the 4 metrics as features
+- 5-fold cross validation, in each fold:
+  - Train classifier on other 4 folds
+  - Get classifier predictions on test fold
+  - Get predictions from each of the 4 metrics on test fold
+  - Record true matches in test fold
+- Compare cross validation results between classifier and the 4 metrics
+  - F1 score
+  - Precision Recall curve
