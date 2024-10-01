@@ -38,6 +38,18 @@ output: pdf_document
 
 ### Experiment
 
+```{r, message=FALSE}
+library(tidyverse)
+library(RecordLinkage)
+library(stringdist)
+
+data("RLdata500")
+df = cbind(RLdata500, id = identity.RLdata500)
+
+rm(RLdata500)
+rm(identity.RLdata500)
+```
+
 We will explore 4 metrics mentioned above in the summary of the paper and available in the `stringdist` R package
 
 1. Levenstein distance
@@ -46,9 +58,6 @@ We will explore 4 metrics mentioned above in the summary of the paper and availa
 4. Cosine similarity
 
 TODO: more rigorous explanations of these 4 metrics depending on the level of detail in the final summary?
-
-Datasets (hard to find, hopefully can find more!):
-- https://www.kaggle.com/datasets/satishgunjal/fuzzy-name-matching?select=test.csv
 
 Tentative Plan:
 - Make an experimental hybrid metric by training some binary classifier (logistic regression, boosting?) using the 4 metrics as features
