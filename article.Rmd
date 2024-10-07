@@ -5,59 +5,47 @@ date: "2024-10-01"
 output: pdf_document
 ---
 
-## Outline
+## Motivation and Goals
 
+In this article, we will explore various string distance metrics and conduct an experiment comparing the efficacy of some popular metrics on the task of matching entity names. We will briefly summarize some metrics that Cohen, Ravikumar, and Fienberg discussed in their paper. Inspired by these authors, we will conduct a similar experiment comparing how well different string distance metrics perform on matching entity names in an example data set.
 
-### Summary: Cohen, Ravikumar, and Fienberg
+## Cohen, Ravikumar, and Fienberg
 
-- Cohen, Ravikumar, and Fienberg implemented an open-source, Java toolkit with a variety of name-matching methods
-- In this paper, they used their toolkit to compare different string distance metrics on the task of matching entity names across numerous different datasets
-- Academic communities such as statistics, databases, and artificial intelligence have proposed different methods for the common problem of matching entity names throughout the years
-- The experiments of Cohen, Ravikumar, and Fienberg provided direct and intuitive comparisons of some of the most popular string distance metrics
+Cohen, Ravikumar, and Fienberg published a paper in 2003 called *A Comparison of String Distance Metrics for Name-Matching Tasks*. At the time, they recently implemented an open-source, Java toolkit with a variety of string distance metrics for numerous name-matching methods. They compared how the different methods in their toolkit performed on the task of matching entity names across numerous different data sets. Academic communities such as statistics, databases, and artificial intelligence have proposed different methods for the common problem of matching entity names throughout the years. Cohen, Ravikumar, and Fienberg conducted experiments to provide direct and intuitive comparisons of some of the most popular string distance metrics among the numerous communities.
 
-- String distance metrics refer to both distance functions and similarity functions
-- For a given pair of strings that are very similar, they would be assigned a small distance value and a large similarity value
+## String Distance Metrics
 
-- One important category of metrics are edit distances where the distance is the "cost" of the best order of edits to one string to make it identical to the other string
-- Edits can include character insertion, deletion, and substitution so each type of edit is assigned a particular cost
-- The Levenstein distance and the Monger-Elkan distance are a couple of examples of edit distance metrics
-- ELABORATE: Levenstein unit cost vs Monger-Elkan particular cost parameters
-- Although not an edit distance, the Jaro metric takes a broadly similar approach by calculating a score based on the number and order of the common characters for a pair of strings
-- BRIEF: Jaro metric elaboration?
-- BRIEF: Jaro-Winkler extension
+String distance metrics refer to both distance functions and similarity functions. Although they encode analogous information, their interpretations are reversed. For a given pair of strings that are very similar, they would be assigned a small distance value and a large similarity value. Correspondingly, for very different strings, they would be assigned a large distance value and a small similarity value.
 
-- Another major category of metrics are token-based where each string is treated as a multiset of characters or words called tokens
-- One example is the Jaccard similarity which is calculated as the size of the intersection of a pair of strings divided by the size of the union
-- Another example is cosine similarity
-- BRIEF: cosine similarity elaboration
+Below, we will explore three broad categories of metrics: edit-distance, token-based, and hybrid. First, we will summarize some popular examples of metrics in these categories that Cohen, Ravikumar, and Fienberg discussed in their paper. Afterwards, we will conduct our own experiment comparing how some of these metrics perform on the task of matching entity names in an example data set.
 
-- Hybrid distance metrics combine multiple metrics and approaches to calculate new distances and similarities
-- BRIEF: level two similarity metrics
-- BRIEF: "soft" cosine similarity
-- They developed another hybrid metric by training a binary SVM classifier with input features being the scores from the Monge-Elkan, Jaro-Winkler, cosine similarity, SFS, and soft cosine similarity metrics
+### Edit-distance
 
-### Experiment
+Edit-distance metrics are calculated as the "cost" of the best order of edits to one string to make it identical to the other string. Edits can include character insertion, deletion, and substitution where each is assigned a particular cost. The **Levenstein distance** is a simple example which assigns a unit cost to all edits. The **Monger-Elkan** distance is a more complex example which assigns a particular $\text{cost} \in [0, 1]$ for each edit where insertions and deletions are assigned relatively lower costs.
 
-```{r, message=FALSE}
-library(tidyverse)
-library(RecordLinkage)
-library(stringdist)
+Although not an edit-distance metric, the **Jaro** metric takes a broadly similar approach by calculating a score based on the count and sequence of the common characters for a pair of strings. [Jaro metric elaboration?]. The **Jaro-Winkler** metric is an extension which incorporates the size of the longest common prefix for a pair of strings.
 
-data("RLdata500")
-df = cbind(RLdata500, id = identity.RLdata500)
+### Token-based
 
-rm(RLdata500)
-rm(identity.RLdata500)
-```
+Token-based metrics treat each string as a multiset of characters or words called tokens. The **Jaccard similarity** is a simple example which is calculated as the size of the intersection of a pair of strings divided by the size of the union. The **cosine similarity** is another popular example. [cosine similarity elaboration?]
 
-We will explore 4 metrics mentioned above in the summary of the paper and available in the `stringdist` R package
+### Hybrid
 
-1. Levenstein distance
-2. Jaro-Winkler distance
-3. Jaccard similarity
-4. Cosine similarity
+Hybrid metrics calculate scores by combining multiple existing string distance metrics. Monge and Elkan's **level two** metric calculates a linear combination of a chosen metric calculated on the sub strings for a pair of strings. Cohen, Ravikumar, and Fienberg experimented with using the Monge-Elkan distance, Jaro metric, and Jaro-Winkler metric in their implementations. **"Soft" cosine similarity** includes similar tokens instead of only identical tokens in the intersection of a pair of strings and combines a secondary distance. Cohen, Ravikumar, and Fienberg used the Jaro-Winkler metric as a secondary distance in their implementation. They also developed their own hybrid metric by training a **binary SVM classifier** with input features being the scores from various existing metrics including the Monge-Elkan distance, the Jaro-Winkler metric, and the cosine similarity.
 
-TODO: more rigorous explanations of these 4 metrics depending on the level of detail in the final summary?
+## Experiment
+
+In our experiment below, we will explore 5 metrics using implementations available in the `stringdist` R package for some of the popular metrics discussed above. We will compare how these 5 metrics perform on the task of matching entity names in an example data set from the `RecordLinkage` R package.
+
+2 are edit-distance metrics:
+- Levenstein distance
+- Jaro-Winkler distance
+
+2 are token-based metrics:
+- Jaccard similarity
+- Cosine similarity
+
+Our 5th metric is a binary classifier using the above 4 metrics as input features
 
 Tentative Plan:
 - Make an experimental hybrid metric by training some binary classifier (logistic regression, boosting?) using the 4 metrics as features
@@ -69,3 +57,91 @@ Tentative Plan:
 - Compare cross validation results between classifier and the 4 metrics
   - F1 score
   - Precision Recall curve
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(RecordLinkage)
+library(stringdist)
+library(caret)
+
+COURSE_NUMBER = 790
+
+data("RLdata500")
+temp_data = cbind(RLdata500, id = identity.RLdata500)
+
+rm(RLdata500)
+rm(identity.RLdata500)
+```
+
+```{r}
+temp_data = temp_data %>%
+  mutate(
+    fname = case_when(
+      !is.na(fname_c2) ~ paste0(fname_c1, "-", fname_c2),
+      .default = fname_c1
+    ),
+    lname = case_when(
+      !is.na(lname_c2) ~ paste0(lname_c1, "-", lname_c2),
+      .default = lname_c1
+    ),
+    bday = paste0(bm, "-", bd, "-", by)
+    )
+```
+
+```{r}
+n = nrow(temp_data)
+ents = paste0(temp_data$fname, " ", temp_data$lname, "; ", temp_data$bday)
+
+FOLDS = 5
+set.seed(COURSE_NUMBER)
+
+df = as.data.frame(cbind(
+  ent = ents,
+  id = temp_data$id,
+  fold = createFolds(ents, k = FOLDS, list = F)
+  ))
+```
+
+```{r}
+fold = c()
+ns_fold = c()
+precision_fold = c()
+recall_fold = c()
+f1_fold = c()
+
+for (f in 1:FOLDS) {
+  temp_df = df %>%
+    filter(fold == f)
+  
+  n_fold = nrow(temp_df)
+  scores = c()
+  responses = c()
+  
+  for (i in 1:n_fold) {
+    for (j in 1:nrow(df)) {
+      score = round(stringdist(temp_df[i, "ent"], df[j, "ent"], method = "jaccard"))
+      response = as.integer(temp_df[i, "id"] == df[j, "id"])
+      
+      scores = c(scores, score)
+      responses = c(responses, response)
+    }
+  }
+  
+  fold = c(fold, f)
+  ns_fold = c(ns_fold, n_fold)
+  
+  precision_fold = c(precision_fold, precision(factor(scores), factor(responses)))
+  recall_fold = c(recall_fold, recall(factor(scores), factor(responses)))
+  f1_fold = c(f1_fold, F_meas(factor(scores), factor(responses)))
+}
+```
+
+```{r}
+as.data.frame(cbind(
+  Fold = fold,
+  n = ns_fold,
+  Precision = precision_fold,
+  Recall = recall_fold,
+  F1 = f1_fold
+  ))
+```
