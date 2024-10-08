@@ -21,7 +21,7 @@ Below, we will explore three broad categories of metrics: edit-distance, token-b
 
 ### Edit-distance
 
-Edit-distance metrics are calculated as the "cost" of the best order of edits to one string to make it identical to the other string. Edits can include character insertion, deletion, and substitution where each is assigned a particular cost. The **Levenstein distance** is a simple example which assigns a unit cost to all edits. The **Monger-Elkan** distance is a more complex example which assigns a particular $\text{cost} \in [0, 1]$ for each edit where insertions and deletions are assigned relatively lower costs.
+Edit-distance metrics are calculated as the "cost" of the best order of edits to one string to make it identical to the other string. Edits can include character insertion, deletion, and substitution where each is assigned a particular cost. The **Levenstein distance** is a simple example which assigns a unit cost to all edits. The **Monge-Elkan** distance is a more complex example which assigns a particular $\text{cost} \in [0, 1]$ for each edit where insertions and deletions are assigned relatively lower costs.
 
 Although not an edit-distance metric, the **Jaro** metric takes a broadly similar approach by calculating a score based on the count and sequence of the common characters for a pair of strings. [Jaro metric elaboration?]. The **Jaro-Winkler** metric is an extension which incorporates the size of the longest common prefix for a pair of strings.
 
@@ -35,7 +35,7 @@ Hybrid metrics calculate scores by combining multiple existing string distance m
 
 ## Experiment
 
-In our experiment below, we will explore 5 metrics using implementations available in the `stringdist` R package for some of the popular metrics discussed above. We will compare how these 5 metrics perform on the task of matching entity names in an example data set from the `RecordLinkage` R package.
+In our experiment below, we will explore 4 of the metrics discussed above using implementations from the `stringdist` package in R. We will compare how these metrics perform on the task of matching entity names in an example data set from the `RecordLinkage` package in R.
 
 2 are edit-distance metrics:
 - Levenstein distance
@@ -45,36 +45,24 @@ In our experiment below, we will explore 5 metrics using implementations availab
 - Jaccard similarity
 - Cosine similarity
 
-Our 5th metric is a binary classifier using the above 4 metrics as input features
-
-Tentative Plan:
-- Make an experimental hybrid metric by training some binary classifier (logistic regression, boosting?) using the 4 metrics as features
-- 5-fold cross validation, in each fold:
-  - Train classifier on other 4 folds
-  - Get classifier predictions on test fold
-  - Get predictions from each of the 4 metrics on test fold
-  - Record true matches in test fold
-- Compare cross validation results between classifier and the 4 metrics
-  - F1 score
-  - Precision Recall curve
-
 ```{r, message=FALSE, warning=FALSE}
 library(tidyverse)
 library(RecordLinkage)
 library(stringdist)
-library(caret)
 
 COURSE_NUMBER = 790
 
 data("RLdata500")
-temp_data = cbind(RLdata500, id = identity.RLdata500)
+rl_data = cbind(RLdata500, id = identity.RLdata500)
 
 rm(RLdata500)
 rm(identity.RLdata500)
+
+head(rl_data)
 ```
 
 ```{r}
-temp_data = temp_data %>%
+rl_data = rl_data %>%
   mutate(
     fname = case_when(
       !is.na(fname_c2) ~ paste0(fname_c1, "-", fname_c2),
@@ -86,20 +74,101 @@ temp_data = temp_data %>%
     ),
     bday = paste0(bm, "-", bd, "-", by)
     )
+
+rl_data[56:60,] %>%
+  select(fname, lname, bday)
 ```
 
 ```{r}
-n = nrow(temp_data)
-ents = paste0(temp_data$fname, " ", temp_data$lname, "; ", temp_data$bday)
+df = as.data.frame(cbind(
+  ent = paste0(rl_data$fname, " ", rl_data$lname, "; ", rl_data$bday),
+  id = rl_data$id
+  ))
+
+head(df)
+```
+
+```{r}
+scores = c()
+responses = c()
+
+n = nrow(df)
+for (i in 1:n) {
+  for (j in 1:n) {
+    for (metric in c("lv", "jw", "jaccard", "cosine")) {
+      score = stringdist(df[i, "ent"], df[j, "ent"], method = metric)
+      response = as.integer(temp_df[i, "id"] == df[j, "id"])
+      
+      scores = c(scores, score)
+      responses = c(responses, response)
+    }
+  }
+}
+```
+
+## Time Permitting: Experiment 2?
+
+Tentative Plan:
+* Make an experimental hybrid metric by training some binary classifier (boosting?) using the 4 metrics as features
+* 5-fold cross validation, for each fold:
+  * Train classifier on other 4 folds
+  * Get classifier predictions on test fold
+  * Get predictions from each of the 4 metrics on test fold
+  * Record true matches in test fold
+* Compare cross validation results between classifier and the 4 metrics
+  * F1 score
+  * Precision
+  * Recall
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(RecordLinkage)
+library(stringdist)
+library(caret)
+
+COURSE_NUMBER = 790
+
+data("RLdata500")
+rl_data = cbind(RLdata500, id = identity.RLdata500)
+
+rm(RLdata500)
+rm(identity.RLdata500)
+
+head(rl_data)
+```
+
+```{r}
+rl_data = rl_data %>%
+  mutate(
+    fname = case_when(
+      !is.na(fname_c2) ~ paste0(fname_c1, "-", fname_c2),
+      .default = fname_c1
+    ),
+    lname = case_when(
+      !is.na(lname_c2) ~ paste0(lname_c1, "-", lname_c2),
+      .default = lname_c1
+    ),
+    bday = paste0(bm, "-", bd, "-", by)
+    )
+
+rl_data[56:60,] %>%
+  select(fname, lname, bday)
+```
+
+```{r}
+n = nrow(rl_data)
+ents = paste0(rl_data$fname, " ", rl_data$lname, "; ", rl_data$bday)
 
 FOLDS = 5
 set.seed(COURSE_NUMBER)
 
 df = as.data.frame(cbind(
   ent = ents,
-  id = temp_data$id,
+  id = rl_data$id,
   fold = createFolds(ents, k = FOLDS, list = F)
   ))
+
+head(df)
 ```
 
 ```{r}
