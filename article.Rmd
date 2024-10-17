@@ -45,8 +45,11 @@ In our experiment below, we will explore 4 of the metrics discussed above using 
 - Jaccard similarity
 - Cosine similarity
 
+### Data Cleaning
+
 ```{r, message=FALSE, warning=FALSE}
 library(tidyverse)
+library(yardstick)
 library(RecordLinkage)
 library(stringdist)
 
@@ -81,12 +84,14 @@ rl_data[56:60,] %>%
 
 ```{r}
 df = as.data.frame(cbind(
-  ent = paste0(rl_data$fname, " ", rl_data$lname, "; ", rl_data$bday),
+  ent = paste0(rl_data$fname, " ", rl_data$lname, " ", rl_data$bday),
   id = rl_data$id
   ))
 
 head(df)
 ```
+
+### Matching
 
 ```{r}
 scores = list(
@@ -97,10 +102,6 @@ scores = list(
 )
 responses = c()
 
-# DELETE?
-min_chars = c()
-max_chars = c()
-
 n = nrow(df)
 
 for (i in 1:n) {
@@ -108,125 +109,39 @@ for (i in 1:n) {
     response = as.integer(df[i, "id"] == df[j, "id"])
     responses = c(responses, response)
     
-    min_char = min(nchar(df[i, "ent"]), nchar(df[j, "ent"]))
-    min_chars = c(min_chars, min_char)
-    
     max_char = max(nchar(df[i, "ent"]), nchar(df[j, "ent"]))
-    max_chars = c(max_chars, max_char)
     
     for (metric in names(scores)) {
       score = stringdist(df[i, "ent"], df[j, "ent"], method = metric)
+      if (metric == "lv") {
+        score = score / max_char
+      }
+      score = 1 - score
+      
       scores[[metric]] = c(scores[[metric]], score)
     }
   }
 }
 ```
 
-## Time Permitting: Experiment 2?
+### Results
 
-Tentative Plan:
-* Make an experimental hybrid metric by training some binary classifier (boosting?) using the 4 metrics as features
-* 5-fold cross validation, for each fold:
-  * Train classifier on other 4 folds
-  * Get classifier predictions on test fold
-  * Get predictions from each of the 4 metrics on test fold
-  * Record true matches in test fold
-* Compare cross validation results between classifier and the 4 metrics
-  * F1 score
-  * Precision
-  * Recall
-
-```{r, message=FALSE, warning=FALSE}
-library(tidyverse)
-library(RecordLinkage)
-library(stringdist)
-library(caret)
-
-COURSE_NUMBER = 790
-
-data("RLdata500")
-rl_data = cbind(RLdata500, id = identity.RLdata500)
-
-rm(RLdata500)
-rm(identity.RLdata500)
-
-head(rl_data)
+```{r}
+results = data.frame(
+  y = factor(responses, levels = c(1, 0)),
+  lv = scores$lv,
+  jw = scores$jw,
+  jaccard = scores$jaccard,
+  cosine = scores$cosine
+)
 ```
 
 ```{r}
-rl_data = rl_data %>%
-  mutate(
-    fname = case_when(
-      !is.na(fname_c2) ~ paste0(fname_c1, "-", fname_c2),
-      .default = fname_c1
-    ),
-    lname = case_when(
-      !is.na(lname_c2) ~ paste0(lname_c1, "-", lname_c2),
-      .default = lname_c1
-    ),
-    bday = paste0(bm, "-", bd, "-", by)
-    )
-
-rl_data[56:60,] %>%
-  select(fname, lname, bday)
+pr_curve(results, y, jw) %>%
+  ggplot(., aes(x=recall, y=precision)) +
+  geom_line()
 ```
 
 ```{r}
-n = nrow(rl_data)
-ents = paste0(rl_data$fname, " ", rl_data$lname, "; ", rl_data$bday)
-
-FOLDS = 5
-set.seed(COURSE_NUMBER)
-
-df = as.data.frame(cbind(
-  ent = ents,
-  id = rl_data$id,
-  fold = createFolds(ents, k = FOLDS, list = F)
-  ))
-
-head(df)
-```
-
-```{r}
-fold = c()
-ns_fold = c()
-precision_fold = c()
-recall_fold = c()
-f1_fold = c()
-
-for (f in 1:FOLDS) {
-  temp_df = df %>%
-    filter(fold == f)
-  
-  n_fold = nrow(temp_df)
-  scores = c()
-  responses = c()
-  
-  for (i in 1:n_fold) {
-    for (j in 1:nrow(df)) {
-      score = round(stringdist(temp_df[i, "ent"], df[j, "ent"], method = "jaccard"))
-      response = as.integer(temp_df[i, "id"] == df[j, "id"])
-      
-      scores = c(scores, score)
-      responses = c(responses, response)
-    }
-  }
-  
-  fold = c(fold, f)
-  ns_fold = c(ns_fold, n_fold)
-  
-  precision_fold = c(precision_fold, precision(factor(scores), factor(responses)))
-  recall_fold = c(recall_fold, recall(factor(scores), factor(responses)))
-  f1_fold = c(f1_fold, F_meas(factor(scores), factor(responses)))
-}
-```
-
-```{r}
-as.data.frame(cbind(
-  Fold = fold,
-  n = ns_fold,
-  Precision = precision_fold,
-  Recall = recall_fold,
-  F1 = f1_fold
-  ))
+pr_auc(results, y, jw)
 ```
