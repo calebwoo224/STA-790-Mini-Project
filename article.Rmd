@@ -89,18 +89,34 @@ head(df)
 ```
 
 ```{r}
-scores = c()
+scores = list(
+  lv = c(),
+  jw = c(),
+  jaccard = c(),
+  cosine = c()
+)
 responses = c()
 
+# DELETE?
+min_chars = c()
+max_chars = c()
+
 n = nrow(df)
+
 for (i in 1:n) {
   for (j in 1:n) {
-    for (metric in c("lv", "jw", "jaccard", "cosine")) {
+    response = as.integer(df[i, "id"] == df[j, "id"])
+    responses = c(responses, response)
+    
+    min_char = min(nchar(df[i, "ent"]), nchar(df[j, "ent"]))
+    min_chars = c(min_chars, min_char)
+    
+    max_char = max(nchar(df[i, "ent"]), nchar(df[j, "ent"]))
+    max_chars = c(max_chars, max_char)
+    
+    for (metric in names(scores)) {
       score = stringdist(df[i, "ent"], df[j, "ent"], method = metric)
-      response = as.integer(temp_df[i, "id"] == df[j, "id"])
-      
-      scores = c(scores, score)
-      responses = c(responses, response)
+      scores[[metric]] = c(scores[[metric]], score)
     }
   }
 }
