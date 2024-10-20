@@ -123,7 +123,7 @@ scores_path = file.path(dir_path, "scores.rds")
 
 Now we will run our experiment below and save our results
 
-```{r, eval=FALSE}
+```{r, eval=True}
 # list storing predictions from each metric
 scores = list(
   lv = c(),
