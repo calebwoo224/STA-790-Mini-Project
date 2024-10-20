@@ -1,0 +1,5 @@
+# ignore experiment results directory
+experiment_results/
+
+# ignore .Rhistory
+.Rhistory
