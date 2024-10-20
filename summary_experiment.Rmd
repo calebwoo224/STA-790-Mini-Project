@@ -1,7 +1,7 @@
 ---
 title: "Mini Project Article"
 author: "Caleb Woo"
-date: "2024-10-01"
+date: "2024-10-22"
 output: pdf_document
 ---
 
@@ -23,11 +23,11 @@ Below, we will explore three broad categories of metrics: edit-distance, token-b
 
 Edit-distance metrics are calculated as the "cost" of the best order of edits to one string to make it identical to the other string. Edits can include character insertion, deletion, and substitution where each is assigned a particular cost. The **Levenstein distance** is a simple example which assigns a unit cost to all edits. The **Monge-Elkan** distance is a more complex example which assigns a particular $\text{cost} \in [0, 1]$ for each edit where insertions and deletions are assigned relatively lower costs.
 
-Although not an edit-distance metric, the **Jaro** metric takes a broadly similar approach by calculating a score based on the count and sequence of the common characters for a pair of strings. [Jaro metric elaboration?]. The **Jaro-Winkler** metric is an extension which incorporates the size of the longest common prefix for a pair of strings.
+Although not an edit-distance metric, the **Jaro** metric takes a broadly similar approach by calculating a score based on the count and sequence of the common characters for a pair of strings. The **Jaro-Winkler** metric is an extension which incorporates the size of the longest common prefix for a pair of strings.
 
 ### Token-based
 
-Token-based metrics treat each string as a multiset of characters or words called tokens. The **Jaccard similarity** is a simple example which is calculated as the size of the intersection of a pair of strings divided by the size of the union. The **cosine similarity** is another popular example. [cosine similarity elaboration?]
+Token-based metrics treat each string as a multiset of characters or words called tokens. The **Jaccard similarity** is a simple example which is calculated as the size of the intersection of a pair of strings divided by the size of the union. The **cosine similarity** is another popular example.
 
 ### Hybrid
 
@@ -37,111 +37,208 @@ Hybrid metrics calculate scores by combining multiple existing string distance m
 
 In our experiment below, we will explore 4 of the metrics discussed above using implementations from the `stringdist` package in R. We will compare how these metrics perform on the task of matching entity names in an example data set from the `RecordLinkage` package in R.
 
-2 are edit-distance metrics:
-- Levenstein distance
-- Jaro-Winkler distance
-
-2 are token-based metrics:
-- Jaccard similarity
-- Cosine similarity
+The 2 edit-distance metrics we will explore are the Levenstein distance and the Jaro-Winkler metric. The 2 token-based metrics we will explore are the Jaccard similarity and the cosine similarity.
 
 ### Data Cleaning
 
+We start by combining the corresponding ids with the example data
+
 ```{r, message=FALSE, warning=FALSE}
-library(tidyverse)
-library(yardstick)
-library(RecordLinkage)
+# package for metrics
 library(stringdist)
+# package for example data set
+library(RecordLinkage)
+# package for data wrangling
+library(tidyverse)
+# package for precision and recall
+library(yardstick)
 
-COURSE_NUMBER = 790
-
+# load example data set
 data("RLdata500")
-rl_data = cbind(RLdata500, id = identity.RLdata500)
+# combine data and ids
+rl_data = cbind(RLdata10000, id = identity.RLdata10000)
 
-rm(RLdata500)
-rm(identity.RLdata500)
+# remove for memory
+rm(RLdata10000)
+rm(identity.RLdata10000)
 
 head(rl_data)
 ```
 
+Since each row represents a particular person, we want to combine names and birthday information to compare all information for a given person within a single string. We start by adding a hyphen between both first names, a hyphen between both last names, and hyphens in the birthday information to make it month-day-year format.
+
 ```{r}
 rl_data = rl_data %>%
   mutate(
+    # hyphenated first name
     fname = case_when(
+      # if second first name exists, hyphenate
       !is.na(fname_c2) ~ paste0(fname_c1, "-", fname_c2),
+      # no hyphen o/w
       .default = fname_c1
     ),
+    # hyphenated last name
     lname = case_when(
+      # if second last name exists, hyphenate
       !is.na(lname_c2) ~ paste0(lname_c1, "-", lname_c2),
+      # no hyphen o/w
       .default = lname_c1
     ),
+    # hyphenated birthday
     bday = paste0(bm, "-", bd, "-", by)
     )
 
-rl_data[56:60,] %>%
+# hyphenated examples
+rl_data[23:27,] %>%
   select(fname, lname, bday)
 ```
 
+The final step is to combine all information into a single string and add the corresponding ids. By doing so, we can compare each person's string with every other string, predict a name match based on a string distance metric, and confirm a true name match using the ids to evaluate predictions across different metrics.
+
 ```{r}
 df = as.data.frame(cbind(
+  # add a space between first name, last name, and birthday
   ent = paste0(rl_data$fname, " ", rl_data$lname, " ", rl_data$bday),
+  # corresponding ids
   id = rl_data$id
   ))
 
 head(df)
 ```
 
-### Matching
+### Name Matching
+
+With our reformatted data in hand, we can now proceed with the experiment. Since there are 10,000 names in the example data set, our experiment will require comparing each of the names with every name. To avoid running such a computationally expensive task multiple times, we will run the experiment and save our results in RDS files. Below is the path for the directory that will store the results and the paths for the results files.
 
 ```{r}
+# results directory name
+dir_path = file.path(getwd(), "experiment_results")
+# responses (binary true name match) file name
+responses_path = file.path(dir_path, "responses.rds")
+# scores (metric predictions) file name
+scores_path = file.path(dir_path, "scores.rds")
+```
+
+Now we will run the experiment below and save our results
+
+```{r}
+# list storing predictions from each metric
 scores = list(
   lv = c(),
   jw = c(),
   jaccard = c(),
   cosine = c()
 )
+# vector storing name match responses
 responses = c()
 
+# total number of names
 n = nrow(df)
 
+# for each name
 for (i in 1:n) {
+  # for each name
   for (j in 1:n) {
+    # 1 = true match, 0 = not a match
     response = as.integer(df[i, "id"] == df[j, "id"])
     responses = c(responses, response)
     
+    # maximum number of chars between names being compared
     max_char = max(nchar(df[i, "ent"]), nchar(df[j, "ent"]))
     
+    # for each metric
     for (metric in names(scores)) {
+      # calculate metric on names being compared
       score = stringdist(df[i, "ent"], df[j, "ent"], method = metric)
+      
+      # levenstein distance divided by max_char to convert to 0-1 range
       if (metric == "lv") {
         score = score / max_char
       }
+      
+      # low metric values suggest high similarity
+      # 1 - metric to make high scores correspond to high similarity
       score = 1 - score
       
       scores[[metric]] = c(scores[[metric]], score)
     }
   }
 }
+
+# create results directory if it does not exist
+dir.create(dir_path)
+
+# save results files
+saveRDS(responses, responses_path)
+saveRDS(scores, scores_path)
 ```
 
 ### Results
 
+With our results in hand, we can plot precision-recall curves and calculate areas under those curves to compare performance across the 4 metrics. First, we load our results from the files and combine them into a single dataframe.
+
 ```{r}
+# load results from files
+responses = readRDS(responses_path)
+scores = readRDS(scores_path)
+
+# results dataframe
 results = data.frame(
+  # make responses a factor for PR curve functionality
   y = factor(responses, levels = c(1, 0)),
+  # predictions from each metric
   lv = scores$lv,
   jw = scores$jw,
   jaccard = scores$jaccard,
   cosine = scores$cosine
 )
+
+head(results)
+```
+
+Next, we combine the PR curve dataframes from each metric to plot all curves in a single figure. We also gather the AUCs from each metric.
+
+```{r}
+# list storing each PR curve df
+curve_list = list()
+# list storing each PR AUC
+auc_list = list()
+
+# for each metric
+for (i in 1:length(names(scores))) {
+  # metric name
+  metric = names(scores)[i]
+  # get metric PR curve df
+  metric_curve = as.data.frame(pr_curve(results, "y", metric))
+  
+  # add Metric column for metric name
+  metric_curve = metric_curve %>%
+    mutate(
+      "Metric" = rep(metric, nrow(metric_curve))
+    )
+  
+  # store PR curve df
+  curve_list[[i]] = metric_curve
+  # store PR AUC
+  auc_list[[metric]] = pr_auc(results, "y", metric) %>% pull(.estimate)
+}
+```
+
+Now our single `curve_df` dataframe contains the PR curve dataframes from each metric with the additional `Metric` column indicating which metric each row is associated with
+
+```{r}
+curve_df = bind_rows(curve_list)
+head(curve_df)
+```
+
+We see the PR AUCs in the other list
+
+```{r}
+auc_list
 ```
 
 ```{r}
-pr_curve(results, y, jw) %>%
-  ggplot(., aes(x=recall, y=precision)) +
+curve_df %>%
+  ggplot(., aes(x=recall, y=precision, color=Metric, linetype=Metric)) +
   geom_line()
-```
-
-```{r}
-pr_auc(results, y, jw)
 ```
