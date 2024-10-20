@@ -1,5 +1,5 @@
 ---
-title: "Mini Project Article"
+title: "String Distance Metrics"
 author: "Caleb Woo"
 date: "2024-10-22"
 output: pdf_document
@@ -41,7 +41,7 @@ The 2 edit-distance metrics we will explore are the Levenstein distance and the 
 
 ### Data Cleaning
 
-We start by combining the corresponding ids with the example data
+We start by combining the corresponding ids with an example data set of 500 names
 
 ```{r, message=FALSE, warning=FALSE}
 # package for metrics
@@ -52,15 +52,17 @@ library(RecordLinkage)
 library(tidyverse)
 # package for precision and recall
 library(yardstick)
+# package for HTML table
+library(kableExtra)
 
 # load example data set
 data("RLdata500")
 # combine data and ids
-rl_data = cbind(RLdata10000, id = identity.RLdata10000)
+rl_data = cbind(RLdata500, id = identity.RLdata500)
 
 # remove for memory
-rm(RLdata10000)
-rm(identity.RLdata10000)
+rm(RLdata500)
+rm(identity.RLdata500)
 
 head(rl_data)
 ```
@@ -89,7 +91,7 @@ rl_data = rl_data %>%
     )
 
 # hyphenated examples
-rl_data[23:27,] %>%
+rl_data[56:60,] %>%
   select(fname, lname, bday)
 ```
 
@@ -108,7 +110,7 @@ head(df)
 
 ### Name Matching
 
-With our reformatted data in hand, we can now proceed with the experiment. Since there are 10,000 names in the example data set, our experiment will require comparing each of the names with every name. To avoid running such a computationally expensive task multiple times, we will run the experiment and save our results in RDS files. Below is the path for the directory that will store the results and the paths for the results files.
+With our reformatted data in hand, we can now proceed with our experiment. Our experiment will require comparing each of the names with every name to predict name matches. There are 500 total names so to avoid running such a computationally expensive task multiple times, we will run our experiment and save our results in RDS files. Below is the path for the directory that will store the results and the paths for the results files.
 
 ```{r}
 # results directory name
@@ -119,9 +121,9 @@ responses_path = file.path(dir_path, "responses.rds")
 scores_path = file.path(dir_path, "scores.rds")
 ```
 
-Now we will run the experiment below and save our results
+Now we will run our experiment below and save our results
 
-```{r}
+```{r, eval=FALSE}
 # list storing predictions from each metric
 scores = list(
   lv = c(),
@@ -184,8 +186,9 @@ scores = readRDS(scores_path)
 
 # results dataframe
 results = data.frame(
-  # make responses a factor for PR curve functionality
+  # make responses a factor for pr_curve function
   y = factor(responses, levels = c(1, 0)),
+  
   # predictions from each metric
   lv = scores$lv,
   jw = scores$jw,
@@ -196,9 +199,9 @@ results = data.frame(
 head(results)
 ```
 
-Next, we combine the PR curve dataframes from each metric to plot all curves in a single figure. We also gather the AUCs from each metric.
+Next, we gather the PR curve dataframes for each metric into a list to plot all curves in a single figure. We also gather the PR AUCs for each metric into another list.
 
-```{r}
+```{r, warning=FALSE}
 # list storing each PR curve df
 curve_list = list()
 # list storing each PR AUC
@@ -224,21 +227,47 @@ for (i in 1:length(names(scores))) {
 }
 ```
 
-Now our single `curve_df` dataframe contains the PR curve dataframes from each metric with the additional `Metric` column indicating which metric each row is associated with
+We can use `dplyr::bind_rows` to concatenate each dataframe in `curve_list` into a single dataframe `curve_df`. Now `curve_df` below contains the PR curve dataframes for each metric with the additional `Metric` column indicating which metric each row is associated with
 
 ```{r}
 curve_df = bind_rows(curve_list)
 head(curve_df)
 ```
 
-We see the PR AUCs in the other list
-
-```{r}
-auc_list
-```
+Using this dataframe, we plot all 4 PR curves in a single plot below where each metric is indicated by a different `color` and `linetype`
 
 ```{r}
 curve_df %>%
   ggplot(., aes(x=recall, y=precision, color=Metric, linetype=Metric)) +
   geom_line()
 ```
+
+We can use `auc_list` to view the PR AUCs for each metric
+
+```{r}
+# convert list to dataframe
+as.data.frame(auc_list) %>%
+  # metric and auc columns long format
+  pivot_longer(
+    cols = names(auc_list),
+    names_to = "Metric",
+    values_to = "PR AUC"
+      ) %>%
+  # HTML table
+  kbl(digits = 5) %>%
+  kable_styling(latex_options = "HOLD_position", full_width = F)
+```
+
+The 2 edit-distance metrics (Levenstein distance and Jaro-Winkler metric) have slightly higher AUCs than the 2 token-based metrics (Jaccard similarity and cosine similarity). However, the differences are minuscule and all AUCs are very close to 1 suggesting that all 4 metrics perform similarly well. The PR curves for each metric are also very similar to each other further suggesting that all 4 metrics perform similarly well.
+
+The primary reason for this is likely due to the extremely low true match rate due to only a small percentage of names in the example data set being duplicates with random errors. As seen below, the true match rate is only 0.24\%. Although the PR curves and AUCs suggest good performance for all 4 metrics, the low true match rate suggests that the good performance is rather trivial where each metric mostly predicts non matches.
+
+```{r}
+paste0("True match rate = ", mean(responses) * 100, "%")
+```
+
+For a more comprehensive experiment in the future, it may help to use the 10,000 name example data set `RLdata10000` instead of the 500 name example data set `RLdata500` that we used above. More data will provide more true match examples to evaluate performance across metrics. We considered experimenting with the 10,000 name example data set but found it too computationally expensive to run locally.
+
+However, only 10\% of names in both example data sets are duplicates with random errors so the issue of an overall low true match rate persists. More data will not fix the issue of a low true match rate so the metrics may still appear to perform similarly well. It may help to manually generate more duplicate names with random errors to supplement the example data. By doing so, the true match rate will increase and we may be able to observe some more noticeable differences in performance across the metrics.
+
+Since the example data primarily contains English names, it is also likely that the 4 metrics we explored will perform similarly regardless of modifications to this data. It may be revealing to explore a different metric such as the Monge-Elkan distance which is known to perform empirically well on Spanish names. Although our experiment results here were rather trivial, we hope that our project can serve as a launching point for further explorations and experiments with string distance metrics.
