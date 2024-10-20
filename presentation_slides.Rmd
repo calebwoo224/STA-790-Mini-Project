@@ -1,35 +1,148 @@
 ---
-title: "Presentation"
+title: "String Distance Metrics"
 author: "Caleb Woo"
 date: "2024-10-22"
 output: ioslides_presentation
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+# package for data wrangling
+library(tidyverse)
+# package for precision and recall
+library(yardstick)
+# package for HTML table
+library(kableExtra)
+
+# results directory name
+dir_path = file.path(getwd(), "experiment_results")
+# responses (binary true name match) file name
+responses_path = file.path(dir_path, "responses.rds")
+# scores (metric predictions) file name
+scores_path = file.path(dir_path, "scores.rds")
+
+# load results from files
+responses = readRDS(responses_path)
+scores = readRDS(scores_path)
+
+# results dataframe
+results = data.frame(
+  # make responses a factor for pr_curve function
+  y = factor(responses, levels = c(1, 0)),
+  
+  # predictions from each metric
+  lv = scores$lv,
+  jw = scores$jw,
+  jaccard = scores$jaccard,
+  cosine = scores$cosine
+)
+
+# list storing each PR curve df
+curve_list = list()
+# list storing each PR AUC
+auc_list = list()
+
+# for each metric
+for (i in 1:length(names(scores))) {
+  # metric name
+  metric = names(scores)[i]
+  # get metric PR curve df
+  metric_curve = as.data.frame(pr_curve(results, "y", metric))
+  
+  # add Metric column for metric name
+  metric_curve = metric_curve %>%
+    mutate(
+      "Metric" = rep(metric, nrow(metric_curve))
+    )
+  
+  # store PR curve df
+  curve_list[[i]] = metric_curve
+  # store PR AUC
+  auc_list[[metric]] = pr_auc(results, "y", metric) %>% pull(.estimate)
+}
+
+curve_df = bind_rows(curve_list)
 ```
 
-## R Markdown
+## Motivation and Goals
 
-This is an R Markdown presentation. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+- Inspired by Cohen, Ravikumar, and Fienberg
+- Explore various string distance metrics
+- Conduct an experiment comparing the performance of metrics on name matching
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document.
+## String Distance Metrics
 
-## Slide with Bullets
+- Will refer to both distance and similarity functions
+- Small distance = Large similarity
+- 3 Categories
+  - Edit-distance
+  - Token-based
+  - Hybrid
+  
+## Edit-distance
 
-- Bullet 1
-- Bullet 2
-- Bullet 3
+- Calculated as the "cost" of the best order of edits to one string to convert it to another string
+- Edits include character
+  - Insertion
+  - Deletion
+  - Substitution
+- Levenstein distance assigns a unit cost to all edits
+- Jaro metric not an edit-distance metric, but broadly similar
+  - Calculated based on the count and sequence of the common characters for a pair of strings
+  - Jaro-Winkler extension incorporates size of the longest common prefix
+  
+## Token-based
 
-## Slide with R Output
+- Treats each string as a multiset of characters or words called "tokens"
+- Jaccard similarity calculated as the size of the intersection divided by the size of the union
+- Cosine similarity another popular example
 
-```{r cars, echo = TRUE}
-summary(cars)
+## Hybrid
+
+- Calculated by combining multiple existing string distance metrics
+- Popular examples
+  - Monge and Elkan's level 2 metric
+  - "Soft" cosine similarity
+- Cohen, Ravikumar, and Fienberg developed their own hybrid metric by training a binary SVM classifier with input features being scores from various existing metrics
+
+## Experiment
+
+- Explore 4 metrics
+  - Edit-distance
+    - Levenstein distance
+    - Jaro-Winkler metric
+  - Token-based
+    - Jaccard similarity
+    - Cosine similarity
+- Compare each name with every name
+- PR curve and AUC for each metric
+
+## PR Curves
+
+```{r, echo=FALSE}
+curve_df %>%
+  ggplot(., aes(x=recall, y=precision, color=Metric, linetype=Metric)) +
+  geom_line()
 ```
 
-## Slide with Plot
+## PR AUCs
 
-```{r pressure}
-plot(pressure)
+```{r, echo=FALSE}
+# convert list to dataframe
+as.data.frame(auc_list) %>%
+  # metric and auc columns long format
+  pivot_longer(
+    cols = names(auc_list),
+    names_to = "Metric",
+    values_to = "PR AUC"
+      ) %>%
+  # HTML table
+  kbl(digits = 5) %>%
+  kable_styling(latex_options = "HOLD_position", full_width = F)
 ```
+
+## Future Directions
+
+- More names in the example data set
+- Generate more duplicate names with random errors to supplement the example data
+- Explore different metrics such as the Monge-Elkan distance
 
